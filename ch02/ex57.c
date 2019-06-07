@@ -50,7 +50,7 @@ void test_show_bytes(int val) {
 }
 
 int main(int argc, char *argv[]){
-	int val = 12345;
+	int val = 1234566;
 	printf("calling test_show_bytes\n");
 	test_show_bytes(val);
 }
