@@ -9,5 +9,4 @@ int main(){
 
 	int c = 1;
 	printf("%x\n", *(unsigned char*)&c);
-
 }
