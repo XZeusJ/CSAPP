@@ -177,7 +177,13 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return !((x|0x55555555)+1);
+	// construct 0x55555555 by 0x55
+	int a = 0x55;
+	int b = (a << 8);
+	int c = b + a;
+	int d = (c << 16) + c;
+
+  return !((x|d)+1);
 }
 /* 
  * negate - return -x 
@@ -187,7 +193,8 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return ~(x+~0);
+  // return ~(x+~0);
+  return ~x+1;
 }
 //3
 /* 
@@ -200,7 +207,7 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return !(~0xff & x);
+  return !!(!(x^0x30) | !(x^0x31) | !(x^0x32) | !(x^0x33) | !(x^0x34) | !(x^0x35) | !(x^0x36) | !(x^0x37) | !(x^0x38) | !(x^0x39));
 }
 /* 
  * conditional - same as x ? y : z 
@@ -210,7 +217,8 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  int mask = ~!x+1;
+  return (y & ~mask)|(z & mask);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -220,7 +228,31 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+	// three condition
+	// x - y <= 0
+	// x = Tmin
+	// x = Tmin and y = Tmin
+	
+  // Boolean value indicating sign of x
+  // 1 = Negative
+  // 0 = Non-Negative
+  int sign_x = x >> 31;
+
+  // Boolean value indicating sign of y
+  // 1 = Negative
+  // 0 = Non-Negative
+  int sign_y = y >> 31;
+
+	// if the signs are equal, then
+	// if x is larger, sign bit of (~y + x) is 0
+	// if y is larger or equal to x, sign bit of (~y + x) is 1
+	int equal = (!(sign_x ^ sign_y)) & ((~y + x) >> 31);
+
+	// if signs are not equal, these principles are reversed.
+	int notEqual = sign_x & !sign_y;
+
+	// this | returns 0 when it is x is greater, so you have to negate it.
+	return ( equal | notEqual);
 }
 //4
 /* 
@@ -232,7 +264,9 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+	int pos = (~x+1) >> 31;
+	int neg = x >> 31;
+  return (~pos & 1) & (~neg & 1);
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
