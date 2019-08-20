@@ -207,7 +207,18 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return !!(!(x^0x30) | !(x^0x31) | !(x^0x32) | !(x^0x33) | !(x^0x34) | !(x^0x35) | !(x^0x36) | !(x^0x37) | !(x^0x38) | !(x^0x39));
+  int sign = 0x1 << 31;
+  // case1: if x > 0x39, then the sign of (x + upperBound) will be 1
+  int upperBound = ~(sign|0x39); 
+  // case2: if x < 0x30, then the sign of (x + lowerBOund) will be 1
+  int lowerBound = ~0x30;
+
+  // check if the sign is 1 or 0 about the two cases
+  int upperSign = ((upperBound+x) >> 31) & 0x01;
+  int lowerSign = ((lowerBound+1+x) >> 31) & 0x01;
+
+  return !(upperSign|lowerSign);
+  // return !!(!(x^0x30) | !(x^0x31) | !(x^0x32) | !(x^0x33) | !(x^0x34) | !(x^0x35) | !(x^0x36) | !(x^0x37) | !(x^0x38) | !(x^0x39));
 }
 /* 
  * conditional - same as x ? y : z 
@@ -228,31 +239,29 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-	// three condition
-	// x - y <= 0
-	// x = Tmin
-	// x = Tmin and y = Tmin
+	// three cases:
+	// 1. x == y
+  // 2. x, y has different sign, so the negative is less
+  // if just do x -y, it may overflow ehn x, y has different sign.
+  // 3. x - y < 0, when x, y has same sign
 	
   // Boolean value indicating sign of x
   // 1 = Negative
   // 0 = Non-Negative
-  int sign_x = x >> 31;
+  int mask = 0x1;
+  int case1 = !(x ^ y);
 
-  // Boolean value indicating sign of y
-  // 1 = Negative
-  // 0 = Non-Negative
-  int sign_y = y >> 31;
+  int x_sign = (x >> 31) & mask;
+  int y_sign = (y >> 31) & mask;
 
-	// if the signs are equal, then
-	// if x is larger, sign bit of (~y + x) is 0
-	// if y is larger or equal to x, sign bit of (~y + x) is 1
-	int equal = (!(sign_x ^ sign_y)) & ((~y + x) >> 31);
+  int diff_sign = x_sign ^ y_sign;
+  int case2 = diff_sign & x_sign; // sign is diff and x_sign is negtive
 
-	// if signs are not equal, these principles are reversed.
-	int notEqual = sign_x & !sign_y;
+  int neg_y = (~y) + 1;
+  int less = ((x+neg_y)>>31)&mask;
+  int case3 = (!diff_sign) & less;
 
-	// this | returns 0 when it is x is greater, so you have to negate it.
-	return ( equal | notEqual);
+  return case1 | case2 | case3;
 }
 //4
 /* 
@@ -264,9 +273,14 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-	int pos = (~x+1) >> 31;
-	int neg = x >> 31;
-  return (~pos & 1) & (~neg & 1);
+	// when x = 0, pos is overflow so that its value is 0
+  int t1 = ~x + 1;
+  // when x = 0, t2 = 0, else its MSB is 1
+  int t2 = x | t1;
+  // when x = 0, t3 = 0xffffffff, else its MSB is 0
+  int t3 = ~t2;
+  // check MSB if 1 or 0
+  return (t3 >> 31) & 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -281,7 +295,23 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+  int b16, b8, b4, b2, b1, b0;
+  int sign = x >> 31; // sign = 0xffffffff or 0x00000000
+  // if x is positive, then don't change x, otherwise let x be ~x
+  x = (sign&~x) | (~sign&x);
+
+  b16 = !!(x>>16)<<4; // if !!(x>>16) == 1, then we know bits of x must more than 16
+  x = x>>b16; // if b16 == 0x1111, we shift x to right 16 bits.
+  b8 = !!(x>>8)<<3; // same as above
+  x = x>>b8;
+  b4 = !!(x>>4)<<2;
+  x = x>>b4;
+  b2 = !!(x>>2)<<1;
+  x = x>>b2;
+  b1 = !!(x>>1);
+  x = x>>b1;
+  b0 = x;
+  return b16+b8+b4+b2+b1+b0+1; // +1 means plus sign
 }
 //float
 /* 
@@ -296,7 +326,16 @@ int howManyBits(int x) {
  *   Rating: 4
  */
 unsigned floatScale2(unsigned uf) {
-  return 2;
+  int sign = uf & (1<<31);
+  int exp = (uf & 0x7f800000) >> 23;
+  
+  if (exp == 0) // denormalized numbers
+  	return (uf << 1)| sign;
+  if (exp == 255) // when argument is NaN, return argument
+  	return uf;
+  exp++; // which means we scale this float 2
+  if (exp == 255) return 0x7f800000 | sign; // return Infinite
+  return (exp<<23) | (uf & 0x807fffff); // normalized numbers 
 }
 /* 
  * floatFloat2Int - Return bit-level equivalent of expression (int) f
@@ -311,7 +350,21 @@ unsigned floatScale2(unsigned uf) {
  *   Rating: 4
  */
 int floatFloat2Int(unsigned uf) {
-  return 2;
+  int s = uf>>31;
+  int exp = ((uf&0x7f800000) >> 23) - 127;
+  int frac = (uf&0x007fffff) | 0x00800000;
+
+  if (!(uf&0x07ffffff)) return 0; // if float = 0, then return 0
+
+  if (exp > 31) return 0x80000000; // if real exp > 31, then out of range, return 0x8000000u
+  if (exp < 0) return 0;
+
+  if (exp > 23) frac <<= (exp - 23); // transfrom frac to integer
+  else frac >>= (23 - exp);
+
+  if (!((frac >> 31)^s)) return frac; // check if overflow, and if has same sign, return the number
+  else if (frac >> 31) return 0x80000000; //overflow
+  else return ~frac + 1; // neg number
 }
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
@@ -327,5 +380,8 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+	int exp = x + 127;
+	if (exp <= 0) return 0; // if the result is too small as a denorm
+	if (exp >= 0xff) return 0x7f800000;
+	return exp << 23;
 }
