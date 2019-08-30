@@ -1,6 +1,12 @@
 # Bomb Lab - Assembly, Stack Frame, GDB
 ## Machine-Level Representation of Programs
 
+### x86-64位汇编-passing data函数传参小结  
+1. 不超过6个的整型参数(包括指针)通过寄存器传递
+2. 寄存器顺序, rdi rsi rdx rcx r8 r9
+3. 超过部分通过调用栈传递(属于调用者的栈部分)
+4. 简单的返回值通过rax传递
+
 ### preview
 先看看符号表```objump -t bomb | less```  
 再less下输入```/bomb```并回车, 检索到一系列文本关键字  
@@ -75,21 +81,23 @@ bomb.txt里就有得来的汇编代码了
 arg1(rdi) -> input  
 arg2(rsi) -> %rsp/&x   
 
-4 byte per cell  
+4 bits per cell  
 []  
 []  
 []  
 []  
-[]  
-[]  
-[]  <- (%rsp)  
+[&arr[5]]  <- 0x14(%rsi) <- rax
+[&arr[4]]  <- 0x10(%rsi) <- rax
+[&arr[3]]  <- 0xc(%rsi) <- r9
+[&arr[2]]  <- 0x8(%rsi) <- r8
+[&arr[1]]  <- 0x4(%rsi) <- rcx
+[&arr[0]]  <- (%rsp)  <- rsi <- rdx
 
-[]  
-[]  
-[]  
+8 bits per cell
 []  
 [ &arr[5] ]  
 [ &arr[4] ]  <- (%rsp) 
+此时 rdx rcx r8 r9 (%rsp) 8(%rsp) 存放着数组里6个数字的地址，rdi是输入的字符串，rsi的值是0x4025c3,该地址的字符串是"%d %d %d %d %d %d"
 
 0x18(%rsp) -> %rbp
 0x14(%rsi) -> [] -> 0x8(%rsp)  
@@ -234,13 +242,13 @@ a = 7 -> 400fa6
 
 int sscanf(const char *restrict s, const char *restrict format, ...);
 
-*case 1*
+*step 1*
 rdi -> phase_3#input -> s
 rsi -> $0x4025cf -> "%d %d" -> format
 rdx -> 8(%rsp) -> a
 rcx -> c(%rsp) -> b
 
-*case 2*
+*step 2*
 rcx -> &b
 rdx -> 15
 rsi -> 0
@@ -253,14 +261,75 @@ if (eax != 2) { // *case 1*
     explode_bomb;
 }
 if (a <= 15) {
-    func4(a, 0, 15, b);  // *case 2*
+    eax = func4(a, 0, 15, b);  // *case 2*
+    if (eax != 0) {
+      explode_bomb;
+    } else {
+      if (b != 0) {
+        explode_bomb;
+      }
+    }
 } else {
     explode_bomb;
 }
 
-void func4(int x, int y, int z, int w) {
+b = 0, a = ?
 
+void func4(int x, int si, int dx) {
+  // x, si=0, dx = 0
+  int eax = ((dx-si)+(dx-si)>>31) >> 1;
+  int cx = (((dx-si)+(dx-si)>>31) >> 1) + si;
+
+  if (cx <= x) {
+    eax = 0;
+    if (cx >= x) {
+      return;
+    } else {
+      eax = func4(x, cx+1, dx);
+      return eax*2 + 1;
+    }
+  } else {
+    dx = cx - 1
+    eax = func4(x, si, cx - 1) ;
+    return eax*2;
+  }
+}
+
+```
+由phase_4里的代码可知b=0, a=[0,15]且func4(a, 0, 15) == 0  
+所以我们写一个测试程序来看看区间[0,15]具体哪些整数符合上述条件  
+```
+#include <stdio.h>
+
+int func4(int x, int si, int dx) {
+  // x, si=0, dx = 0
+  int eax = ((dx-si)+((dx-si)>>31)) >> 1;
+  int cx = (((dx-si)+((dx-si)>>31)) >> 1) + si;
+
+  if (cx <= x) {
+    eax = 0;
+    if (cx >= x) {
+      return eax;
+    } else {
+      eax = func4(x, cx+1, dx);
+      return eax*2 + 1;
+    }
+  } else {
+    eax = func4(x, si, cx - 1) ;
+    return eax*2;
+  }
 }
 
 
+int main(void)
+{
+  for (int i = 0; i<= 0xe; i++) {
+    if (func4(i, 0, 0xe) == 0) {
+      printf("%d\n",i);
+    }
+  }
+  return 0;
+}
 ```
+答案：
+根据测试结果，a={0,1，3,7}， b=0
